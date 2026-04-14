@@ -1,0 +1,85 @@
+# NunuDNS configuration file
+# Copy this to config.toml and adjust to your needs.
+
+[server]
+# Address to bind the DNS server on. Use 127.0.0.1:53 for local-only.
+listen    = "127.0.0.1:53"
+log_level = "info"   # debug | info | warn | error
+
+# Simple response cache — caches resolved answers per query type.
+cache     = true
+cache_ttl = 300   # seconds (max TTL; actual DNS record TTL wins if shorter)
+
+
+# ── Upstream DNS servers ─────────────────────────────────────────────────────
+# Supported protocols: udp, tcp, doh (DNS-over-HTTPS), dot (DNS-over-TLS)
+
+[[upstreams]]
+name     = "cloudflare"
+protocol = "udp"
+address  = "1.1.1.1:53"
+timeout  = 5
+
+[[upstreams]]
+name     = "google"
+protocol = "udp"
+address  = "8.8.8.8:53"
+timeout  = 5
+
+[[upstreams]]
+name     = "cloudflare-doh"
+protocol = "doh"
+address  = "https://cloudflare-dns.com/dns-query"
+timeout  = 8
+
+[[upstreams]]
+name     = "quad9-dot"
+protocol = "dot"
+address  = "dns.quad9.net:853"
+timeout  = 8
+
+[[upstreams]]
+name     = "local-router"
+protocol = "udp"
+address  = "192.168.1.1:53"
+timeout  = 3
+
+
+# ── Routing rules ─────────────────────────────────────────────────────────────
+[rules]
+# Upstream used when no route rule matches.
+default_upstream = "cloudflare-doh"
+
+# Routes are evaluated in order — first match wins.
+
+# Send .local domains to the local router
+[[rules.routes]]
+match    = "*.local"
+upstream = "local-router"
+
+# Send corporate intranet to internal DNS
+[[rules.routes]]
+match    = "*.corp.example.com"
+upstream = "local-router"
+
+# Force a specific domain to use Quad9 DoT
+[[rules.routes]]
+match    = "malware-check.example.com"
+upstream = "quad9-dot"
+
+# Regex example — route all .ru and .cn domains to Quad9
+# [[rules.routes]]
+# match    = "/\\.(ru|cn)\\.?$/"
+# upstream = "quad9-dot"
+
+
+# ── Blocklists ────────────────────────────────────────────────────────────────
+# Supports plain-domain lists and hosts-file format (0.0.0.0 domain).
+
+# [[rules.blocklists]]
+# path   = "blocklist.txt"
+# action = "nxdomain"   # return NXDOMAIN for blocked domains
+
+# [[rules.blocklists]]
+# path   = "ads.txt"
+# action = "zero"       # return 0.0.0.0 / :: for A/AAAA queries

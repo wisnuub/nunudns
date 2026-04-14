@@ -1,0 +1,6 @@
+nunudns
+nunudns.exe
+nunudns-arm64.exe
+config.toml
+blocklist.txt
+*.log
