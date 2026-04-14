@@ -1,6 +1,12 @@
 nunudns
 nunudns.exe
 nunudns-arm64.exe
+nunudns-gui.exe
+NunuDNS.exe
 config.toml
 blocklist.txt
 *.log
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/

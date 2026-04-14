@@ -27,10 +27,16 @@ type UpstreamConfig struct {
 	Timeout  int    `toml:"timeout"`  // seconds, default 5
 }
 
+type PoolConfig struct {
+	Name    string   `toml:"name"`
+	Members []string `toml:"members"` // upstream names
+}
+
 type RulesConfig struct {
-	DefaultUpstream string        `toml:"default_upstream"`
-	Routes          []RouteRule   `toml:"routes"`
-	Blocklists      []BlocklistConfig `toml:"blocklists"`
+	DefaultUpstream string            `toml:"default_upstream"`
+	Routes          []RouteRule       `toml:"routes"`
+	Blocklists      []BlocklistConfig  `toml:"blocklists"`
+	Pools           []PoolConfig      `toml:"pools"`
 }
 
 type RouteRule struct {

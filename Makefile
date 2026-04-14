@@ -2,7 +2,7 @@ BINARY  := nunudns
 VERSION := 1.0.0
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 
-.PHONY: build build-windows tidy test clean
+.PHONY: build build-windows build-gui-windows tidy test clean
 
 ## build: build for the current OS
 build:
@@ -27,6 +27,21 @@ tidy:
 test:
 	go test ./...
 
+## build-gui-windows: cross-compile GUI binary for Windows using fyne-cross (requires fyne-cross or mingw-w64)
+## With fyne-cross: fyne-cross windows -arch amd64 ./cmd/nunudns
+## With mingw-w64:  CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BINARY)-gui.exe ./cmd/nunudns
+build-gui-windows:
+	@echo "Building GUI binary for Windows..."
+	@if command -v fyne-cross >/dev/null 2>&1; then \
+		fyne-cross windows -arch amd64 ./cmd/nunudns; \
+	elif command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then \
+		CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+		go build $(LDFLAGS) -o $(BINARY)-gui.exe ./cmd/nunudns; \
+	else \
+		echo "Install fyne-cross (go install fyne.io/fyne/v2/cmd/fyne-cross@latest) or mingw-w64 to build."; \
+		exit 1; \
+	fi
+
 ## clean: remove build artefacts
 clean:
-	rm -f $(BINARY) $(BINARY).exe $(BINARY)-arm64.exe
+	rm -f $(BINARY) $(BINARY).exe $(BINARY)-arm64.exe $(BINARY)-gui.exe

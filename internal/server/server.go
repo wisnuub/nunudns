@@ -9,6 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/wisnuub/nunudns/internal/config"
+	"github.com/wisnuub/nunudns/internal/logstream"
 	"github.com/wisnuub/nunudns/internal/rules"
 	"github.com/wisnuub/nunudns/internal/upstream"
 )
@@ -22,14 +23,21 @@ type Server struct {
 	udpServer *dns.Server
 	tcpServer *dns.Server
 
-	cache   *cache
+	cache    *cache
 	useCache bool
+
+	stream *logstream.Stream
 
 	mu sync.RWMutex
 }
 
 // New creates a new Server from config.
 func New(cfg *config.Config) (*Server, error) {
+	return NewWithStream(cfg, nil)
+}
+
+// NewWithStream creates a new Server from config and attaches a log stream.
+func NewWithStream(cfg *config.Config, stream *logstream.Stream) (*Server, error) {
 	router, err := rules.New(cfg.Rules)
 	if err != nil {
 		return nil, fmt.Errorf("building router: %w", err)
@@ -50,6 +58,7 @@ func New(cfg *config.Config) (*Server, error) {
 		router:    router,
 		upstreams: resolvers,
 		useCache:  cfg.Server.Cache,
+		stream:    stream,
 	}
 
 	if cfg.Server.Cache {
@@ -101,6 +110,8 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
+	start := time.Now()
+
 	if len(req.Question) == 0 {
 		dns.HandleFailed(w, req)
 		return
@@ -108,8 +119,9 @@ func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
 
 	q := req.Question[0]
 	domain := q.Name
+	qtype := dns.TypeToString[q.Qtype]
 
-	slog.Debug("query received", "domain", domain, "type", dns.TypeToString[q.Qtype])
+	slog.Debug("query received", "domain", domain, "type", qtype)
 
 	// Cache lookup
 	if s.useCache && s.cache != nil {
@@ -117,6 +129,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
 			cached.Id = req.Id
 			_ = w.WriteMsg(cached)
 			slog.Debug("cache hit", "domain", domain)
+			s.emitEvent(domain, qtype, "CACHED", "", time.Since(start), "NOERROR", true)
 			return
 		}
 	}
@@ -128,6 +141,8 @@ func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
 		resp := s.buildBlockResponse(req, match.BlockIP)
 		_ = w.WriteMsg(resp)
 		slog.Info("blocked", "domain", domain)
+		rcode := dns.RcodeToString[resp.Rcode]
+		s.emitEvent(domain, qtype, "BLOCKED", "", time.Since(start), rcode, false)
 		return
 	}
 
@@ -140,6 +155,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
 		m.Rcode = dns.RcodeServerFailure
 		_ = w.WriteMsg(m)
 		slog.Warn("no upstream available", "domain", domain, "upstream", match.Upstream)
+		s.emitEvent(domain, qtype, "RESOLVED", match.Upstream, time.Since(start), "SERVFAIL", false)
 		return
 	}
 
@@ -150,6 +166,7 @@ func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
 		m.SetReply(req)
 		m.Rcode = dns.RcodeServerFailure
 		_ = w.WriteMsg(m)
+		s.emitEvent(domain, qtype, "RESOLVED", resolver.Name(), time.Since(start), "SERVFAIL", false)
 		return
 	}
 
@@ -162,6 +179,25 @@ func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
 
 	resp.Id = req.Id
 	_ = w.WriteMsg(resp)
+
+	rcode := dns.RcodeToString[resp.Rcode]
+	s.emitEvent(domain, qtype, "RESOLVED", resolver.Name(), time.Since(start), rcode, false)
+}
+
+func (s *Server) emitEvent(domain, qtype, action, upstreamName string, latency time.Duration, rcode string, cached bool) {
+	if s.stream == nil {
+		return
+	}
+	s.stream.Emit(logstream.Event{
+		Time:     time.Now(),
+		Domain:   domain,
+		QType:    qtype,
+		Action:   action,
+		Upstream: upstreamName,
+		Latency:  latency,
+		Rcode:    rcode,
+		Cached:   cached,
+	})
 }
 
 func (s *Server) buildBlockResponse(req *dns.Msg, blockIP net.IP) *dns.Msg {
