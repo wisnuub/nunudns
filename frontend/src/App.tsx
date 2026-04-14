@@ -6,27 +6,29 @@ import { ServersView } from './views/ServersView'
 import { RulesView } from './views/RulesView'
 import { PoolsView } from './views/PoolsView'
 import { SettingsView } from './views/SettingsView'
+import { ProcessesView } from './views/ProcessesView'
 import { useDnsStore } from './store/dnsStore'
 import { EventsOn } from './wailsjs/runtime/runtime'
 import * as Backend from './wailsjs/go/main/App'
 
 export default function App() {
-  const { activeView, setStatus, setUpstreams, setRules, setPools, setDefaultUpstream, addEvent } = useDnsStore()
+  const { activeView, setStatus, setUpstreams, setRules, setProcessRules, setPools, setDefaultUpstream, addEvent } = useDnsStore()
 
   useEffect(() => {
-    // Load initial data from backend
     Promise.all([
       Backend.GetStatus(),
       Backend.GetUpstreams(),
       Backend.GetRules(),
+      Backend.GetProcessRules(),
       Backend.GetPools(),
       Backend.GetDefaultUpstream(),
       Backend.GetRecentEvents(),
     ])
-      .then(([status, upstreams, rules, pools, def, events]) => {
+      .then(([status, upstreams, rules, processRules, pools, def, events]) => {
         setStatus(status.running, status.address)
         setUpstreams(upstreams || [])
         setRules(rules || [])
+        setProcessRules(processRules || [])
         setPools(pools || [])
         setDefaultUpstream(def)
         ;(events || []).forEach(addEvent)
@@ -46,8 +48,9 @@ export default function App() {
         <div className="flex-1 overflow-hidden">
           {activeView === 'log'      && <LogView />}
           {activeView === 'servers'  && <ServersView />}
-          {activeView === 'rules'    && <RulesView />}
-          {activeView === 'pools'    && <PoolsView />}
+          {activeView === 'rules'     && <RulesView />}
+          {activeView === 'processes' && <ProcessesView />}
+          {activeView === 'pools'     && <PoolsView />}
           {activeView === 'settings' && <SettingsView />}
         </div>
       </div>

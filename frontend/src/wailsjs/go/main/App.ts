@@ -1,37 +1,51 @@
-// Wails auto-generates this file during build.
-// This stub enables TypeScript development without the Wails runtime.
-import type { config, logstream } from '../../models'
+// Wails auto-generates this at build time. This stub provides type safety in dev.
+import type { config, logstream, netsetup, BuiltinServer } from '../../models'
 
-const go = () => (window as any).go.main.App
+const go = (window as any).go?.main?.App
 
-export function StartDNS(): Promise<void> { return go().StartDNS() }
-export function StopDNS(): Promise<void> { return go().StopDNS() }
-export function GetStatus(): Promise<{ running: boolean; address: string }> { return go().GetStatus() }
-export function GetConfig(): Promise<any> { return go().GetConfig() }
-export function GetUpstreams(): Promise<config.UpstreamConfig[]> { return go().GetUpstreams() }
-export function AddUpstream(u: config.UpstreamConfig): Promise<void> { return go().AddUpstream(u) }
-export function UpdateUpstream(oldName: string, u: config.UpstreamConfig): Promise<void> { return go().UpdateUpstream(oldName, u) }
-export function DeleteUpstream(name: string): Promise<void> { return go().DeleteUpstream(name) }
-export function CheckServer(protocol: string, address: string): Promise<{ rtt: number; error: string }> { return go().CheckServer(protocol, address) }
-export function GetRules(): Promise<config.RouteRule[]> { return go().GetRules() }
-export function AddRule(r: config.RouteRule): Promise<void> { return go().AddRule(r) }
-export function UpdateRule(i: number, r: config.RouteRule): Promise<void> { return go().UpdateRule(i, r) }
-export function DeleteRule(i: number): Promise<void> { return go().DeleteRule(i) }
-export function MoveRuleUp(i: number): Promise<void> { return go().MoveRuleUp(i) }
-export function MoveRuleDown(i: number): Promise<void> { return go().MoveRuleDown(i) }
-export function GetDefaultUpstream(): Promise<string> { return go().GetDefaultUpstream() }
-export function SetDefaultUpstream(name: string): Promise<void> { return go().SetDefaultUpstream(name) }
-export function GetPools(): Promise<config.PoolConfig[]> { return go().GetPools() }
-export function AddPool(p: config.PoolConfig): Promise<void> { return go().AddPool(p) }
-export function UpdatePool(name: string, p: config.PoolConfig): Promise<void> { return go().UpdatePool(name, p) }
-export function DeletePool(name: string): Promise<void> { return go().DeletePool(name) }
-export function GetRecentEvents(): Promise<logstream.Event[]> { return go().GetRecentEvents() }
-export function GetBuiltinServers(): Promise<any[]> { return go().GetBuiltinServers() }
-export function ImportServers(servers: any[]): Promise<void> { return go().ImportServers(servers) }
-export function GetServiceStatus(): Promise<string> { return go().GetServiceStatus() }
-export function InstallService(): Promise<void> { return go().InstallService() }
-export function UninstallService(): Promise<void> { return go().UninstallService() }
-export function StartService(): Promise<void> { return go().StartService() }
-export function StopService(): Promise<void> { return go().StopService() }
-export function GetSettings(): Promise<config.ServerConfig> { return go().GetSettings() }
-export function SaveSettings(s: config.ServerConfig): Promise<void> { return go().SaveSettings(s) }
+export const StartDNS = (): Promise<void> => go.StartDNS()
+export const StopDNS = (): Promise<void> => go.StopDNS()
+export const GetStatus = (): Promise<{ running: boolean; address: string }> => go.GetStatus()
+
+export const GetUpstreams = (): Promise<config.UpstreamConfig[]> => go.GetUpstreams()
+export const AddUpstream = (u: config.UpstreamConfig): Promise<void> => go.AddUpstream(u)
+export const UpdateUpstream = (oldName: string, u: config.UpstreamConfig): Promise<void> => go.UpdateUpstream(oldName, u)
+export const DeleteUpstream = (name: string): Promise<void> => go.DeleteUpstream(name)
+export const CheckServer = (protocol: string, address: string): Promise<{ rtt: number; error: string }> => go.CheckServer(protocol, address)
+
+export const GetRules = (): Promise<config.RouteRule[]> => go.GetRules()
+export const AddRule = (r: config.RouteRule): Promise<void> => go.AddRule(r)
+export const UpdateRule = (i: number, r: config.RouteRule): Promise<void> => go.UpdateRule(i, r)
+export const DeleteRule = (i: number): Promise<void> => go.DeleteRule(i)
+export const MoveRuleUp = (i: number): Promise<void> => go.MoveRuleUp(i)
+export const MoveRuleDown = (i: number): Promise<void> => go.MoveRuleDown(i)
+export const GetDefaultUpstream = (): Promise<string> => go.GetDefaultUpstream()
+export const SetDefaultUpstream = (name: string): Promise<void> => go.SetDefaultUpstream(name)
+
+export const GetProcessRules = (): Promise<config.ProcessRule[]> => go.GetProcessRules()
+export const AddProcessRule = (pr: config.ProcessRule): Promise<void> => go.AddProcessRule(pr)
+export const UpdateProcessRule = (i: number, pr: config.ProcessRule): Promise<void> => go.UpdateProcessRule(i, pr)
+export const DeleteProcessRule = (i: number): Promise<void> => go.DeleteProcessRule(i)
+
+export const GetPools = (): Promise<config.PoolConfig[]> => go.GetPools()
+export const AddPool = (p: config.PoolConfig): Promise<void> => go.AddPool(p)
+export const UpdatePool = (name: string, p: config.PoolConfig): Promise<void> => go.UpdatePool(name, p)
+export const DeletePool = (name: string): Promise<void> => go.DeletePool(name)
+
+export const GetRecentEvents = (): Promise<logstream.Event[]> => go.GetRecentEvents()
+export const GetBuiltinServers = (): Promise<BuiltinServer[]> => go.GetBuiltinServers()
+export const ImportServers = (servers: BuiltinServer[]): Promise<void> => go.ImportServers(servers)
+
+export const GetAdapters = (): Promise<netsetup.AdapterInfo[]> => go.GetAdapters()
+export const EnableSystemDNS = (): Promise<void> => go.EnableSystemDNS()
+export const DisableSystemDNS = (): Promise<void> => go.DisableSystemDNS()
+export const IsAdmin = (): Promise<boolean> => go.IsAdmin()
+
+export const GetServiceStatus = (): Promise<string> => go.GetServiceStatus()
+export const InstallService = (): Promise<void> => go.InstallService()
+export const UninstallService = (): Promise<void> => go.UninstallService()
+export const StartService = (): Promise<void> => go.StartService()
+export const StopService = (): Promise<void> => go.StopService()
+
+export const GetSettings = (): Promise<config.ServerConfig> => go.GetSettings()
+export const SaveSettings = (s: config.ServerConfig): Promise<void> => go.SaveSettings(s)

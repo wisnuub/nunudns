@@ -39,6 +39,16 @@ function RulesIcon() {
   )
 }
 
+function ProcessIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  )
+}
+
 function PoolsIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -59,11 +69,12 @@ function SettingsIcon() {
 }
 
 const navItems: NavItem[] = [
-  { id: 'log',      label: 'Activity Log', icon: <ActivityIcon /> },
-  { id: 'servers',  label: 'DNS Servers',  icon: <ServersIcon /> },
-  { id: 'rules',    label: 'Rules',        icon: <RulesIcon /> },
-  { id: 'pools',    label: 'Pools',        icon: <PoolsIcon /> },
-  { id: 'settings', label: 'Settings',     icon: <SettingsIcon /> },
+  { id: 'log',       label: 'Activity Log',  icon: <ActivityIcon /> },
+  { id: 'servers',   label: 'DNS Servers',   icon: <ServersIcon /> },
+  { id: 'rules',     label: 'Rules',         icon: <RulesIcon /> },
+  { id: 'processes', label: 'App Rules',     icon: <ProcessIcon /> },
+  { id: 'pools',     label: 'Pools',         icon: <PoolsIcon /> },
+  { id: 'settings',  label: 'Settings',      icon: <SettingsIcon /> },
 ]
 
 export function Sidebar() {

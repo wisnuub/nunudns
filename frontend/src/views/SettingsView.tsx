@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Button } from '../components/Button'
+import { Badge } from '../components/Badge'
 import { FormField, Input, Select } from '../components/FormField'
 import * as Backend from '../wailsjs/go/main/App'
-import type { config } from '../wailsjs/models'
+import type { config, netsetup } from '../wailsjs/models'
 
 const defaultSettings: config.ServerConfig = {
   listen: '127.0.0.1:53',
@@ -20,12 +21,63 @@ export function SettingsView() {
   const [serviceStatus, setServiceStatus] = useState<string>('loading')
   const [serviceWorking, setServiceWorking] = useState(false)
 
+  const [adapters, setAdapters] = useState<netsetup.AdapterInfo[]>([])
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [systemDnsActive, setSystemDnsActive] = useState(false)
+  const [netWorking, setNetWorking] = useState(false)
+  const [netError, setNetError] = useState('')
+
   useEffect(() => {
-    Backend.GetSettings().then((s) => {
-      if (s) setSettings(s)
-    })
+    Backend.GetSettings().then((s) => { if (s) setSettings(s) })
     Backend.GetServiceStatus().then(setServiceStatus)
+    Backend.IsAdmin().then(setIsAdmin)
+    Backend.GetAdapters().then((a) => {
+      const list = a || []
+      setAdapters(list)
+      // Detect if system DNS is already pointed at 127.0.0.1
+      const allRouted = list.length > 0 && list.every(
+        (ad) => ad.current_dns?.includes('127.0.0.1')
+      )
+      setSystemDnsActive(allRouted)
+    })
   }, [])
+
+  async function refreshAdapters() {
+    const list = await Backend.GetAdapters()
+    setAdapters(list || [])
+    const allRouted = (list || []).length > 0 && (list || []).every(
+      (ad) => ad.current_dns?.includes('127.0.0.1')
+    )
+    setSystemDnsActive(allRouted)
+  }
+
+  async function handleEnableSystemDNS() {
+    setNetWorking(true)
+    setNetError('')
+    try {
+      await Backend.EnableSystemDNS()
+      await refreshAdapters()
+      setSystemDnsActive(true)
+    } catch (e: any) {
+      setNetError(String(e))
+    } finally {
+      setNetWorking(false)
+    }
+  }
+
+  async function handleDisableSystemDNS() {
+    setNetWorking(true)
+    setNetError('')
+    try {
+      await Backend.DisableSystemDNS()
+      await refreshAdapters()
+      setSystemDnsActive(false)
+    } catch (e: any) {
+      setNetError(String(e))
+    } finally {
+      setNetWorking(false)
+    }
+  }
 
   function update<K extends keyof config.ServerConfig>(key: K, value: config.ServerConfig[K]) {
     setSettings((s) => ({ ...s, [key]: value }))
@@ -145,6 +197,77 @@ export function SettingsView() {
               {saving ? 'Saving…' : saved ? '✓ Saved' : 'Apply Settings'}
             </Button>
             {error && <span className="text-xs text-error-red">{error}</span>}
+          </div>
+        </div>
+
+        {/* Network / System DNS */}
+        <div className="bg-bg-card border border-white/5 rounded-card p-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold text-white">System DNS</div>
+              <p className="text-xs text-white/40 mt-0.5">
+                Set NunuDNS as the DNS server for all network adapters so every app is covered automatically
+              </p>
+            </div>
+            <Badge color={systemDnsActive ? 'green' : 'gray'}>
+              {systemDnsActive ? 'Active' : 'Inactive'}
+            </Badge>
+          </div>
+
+          {!isAdmin && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-warning/10 border border-warning/20 rounded-btn text-xs text-warning">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              Run NunuDNS as Administrator to change network adapter DNS settings
+            </div>
+          )}
+
+          {/* Adapter list */}
+          {adapters.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {adapters.map((ad) => {
+                const isRouted = ad.current_dns?.includes('127.0.0.1')
+                return (
+                  <div key={ad.name} className="flex items-center justify-between text-sm px-3 py-2 bg-bg-primary/50 rounded-btn">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${isRouted ? 'bg-success' : 'bg-white/20'}`} />
+                      <span className="text-white/80">{ad.name}</span>
+                    </div>
+                    <span className="text-xs font-mono text-white/40">
+                      {ad.current_dns?.length ? ad.current_dns.join(', ') : 'DHCP'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {!systemDnsActive ? (
+              <Button
+                onClick={handleEnableSystemDNS}
+                disabled={netWorking || !isAdmin}
+                size="sm"
+              >
+                {netWorking ? 'Applying…' : 'Enable System DNS'}
+              </Button>
+            ) : (
+              <Button
+                variant="danger"
+                onClick={handleDisableSystemDNS}
+                disabled={netWorking || !isAdmin}
+                size="sm"
+              >
+                {netWorking ? 'Restoring…' : 'Disable System DNS'}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={refreshAdapters}>
+              Refresh
+            </Button>
+            {netError && <span className="text-xs text-error-red">{netError}</span>}
           </div>
         </div>
 

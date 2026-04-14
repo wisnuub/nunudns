@@ -32,11 +32,22 @@ type PoolConfig struct {
 	Members []string `toml:"members"` // upstream names
 }
 
+// ProcessRule routes DNS queries from a specific process to a specific upstream.
+// Process can be an exact filename ("chrome.exe"), a wildcard ("game*.exe"), or "*" (any).
+// Match follows the same syntax as RouteRule.Match (exact, *.suffix, /regex/).
+type ProcessRule struct {
+	Process  string `toml:"process"`  // process executable name, e.g. "chrome.exe"
+	Match    string `toml:"match"`    // domain pattern, "" = match all domains
+	Upstream string `toml:"upstream"` // upstream name (or "__block__" to block)
+	Enabled  bool   `toml:"enabled"`
+}
+
 type RulesConfig struct {
 	DefaultUpstream string            `toml:"default_upstream"`
 	Routes          []RouteRule       `toml:"routes"`
-	Blocklists      []BlocklistConfig  `toml:"blocklists"`
+	Blocklists      []BlocklistConfig `toml:"blocklists"`
 	Pools           []PoolConfig      `toml:"pools"`
+	ProcessRules    []ProcessRule     `toml:"process_rules"`
 }
 
 type RouteRule struct {

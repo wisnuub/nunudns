@@ -10,6 +10,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/wisnuub/nunudns/internal/config"
 	"github.com/wisnuub/nunudns/internal/logstream"
+	"github.com/wisnuub/nunudns/internal/process"
 	"github.com/wisnuub/nunudns/internal/rules"
 	"github.com/wisnuub/nunudns/internal/upstream"
 )
@@ -89,13 +90,10 @@ func (s *Server) Start() error {
 	}
 
 	errCh := make(chan error, 2)
-
 	go func() { errCh <- s.udpServer.ListenAndServe() }()
 	go func() { errCh <- s.tcpServer.ListenAndServe() }()
 
 	slog.Info("NunuDNS listening", "address", s.cfg.Server.Listen)
-
-	// Return first fatal error
 	return <-errCh
 }
 
@@ -107,6 +105,28 @@ func (s *Server) Stop() {
 	if s.tcpServer != nil {
 		_ = s.tcpServer.Shutdown()
 	}
+}
+
+// identifyProcess attempts to find the process name that sent the DNS query.
+// Works on Windows by looking up the source UDP port in the process table.
+func (s *Server) identifyProcess(w dns.ResponseWriter) string {
+	remoteAddr := w.RemoteAddr()
+	if remoteAddr == nil {
+		return ""
+	}
+	udpAddr, ok := remoteAddr.(*net.UDPAddr)
+	if !ok || !udpAddr.IP.IsLoopback() {
+		return ""
+	}
+	pid, err := process.GetPIDByUDPPort(uint16(udpAddr.Port))
+	if err != nil {
+		return ""
+	}
+	name, err := process.GetProcessName(pid)
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
@@ -121,41 +141,48 @@ func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
 	domain := q.Name
 	qtype := dns.TypeToString[q.Qtype]
 
-	slog.Debug("query received", "domain", domain, "type", qtype)
+	// Identify which process made this DNS query (Windows only, best-effort)
+	processName := s.identifyProcess(w)
 
-	// Cache lookup
+	slog.Debug("query received", "domain", domain, "type", qtype, "process", processName)
+
+	// Cache lookup (skip per-process routing for cached responses)
 	if s.useCache && s.cache != nil {
 		if cached := s.cache.get(domain, q.Qtype); cached != nil {
 			cached.Id = req.Id
 			_ = w.WriteMsg(cached)
 			slog.Debug("cache hit", "domain", domain)
-			s.emitEvent(domain, qtype, "CACHED", "", time.Since(start), "NOERROR", true)
+			s.emitEvent(domain, qtype, "CACHED", "", time.Since(start), "NOERROR", true, processName)
 			return
 		}
 	}
 
-	// Route lookup
-	match := s.router.Lookup(domain)
+	// Process-specific rules take priority over domain rules
+	var match rules.Match
+	if processName != "" {
+		match = s.router.LookupProcess(domain, processName)
+	}
+	if match.Action == rules.ActionNoMatch {
+		match = s.router.Lookup(domain)
+	}
 
 	if match.Action == rules.ActionBlock {
 		resp := s.buildBlockResponse(req, match.BlockIP)
 		_ = w.WriteMsg(resp)
-		slog.Info("blocked", "domain", domain)
-		rcode := dns.RcodeToString[resp.Rcode]
-		s.emitEvent(domain, qtype, "BLOCKED", "", time.Since(start), rcode, false)
+		slog.Info("blocked", "domain", domain, "process", processName)
+		s.emitEvent(domain, qtype, "BLOCKED", "", time.Since(start), dns.RcodeToString[resp.Rcode], false, processName)
 		return
 	}
 
-	// Resolve upstream
+	// Resolve via upstream
 	resolver := s.upstreams[match.Upstream]
 	if resolver == nil {
-		// No upstream configured — SERVFAIL
 		m := new(dns.Msg)
 		m.SetReply(req)
 		m.Rcode = dns.RcodeServerFailure
 		_ = w.WriteMsg(m)
 		slog.Warn("no upstream available", "domain", domain, "upstream", match.Upstream)
-		s.emitEvent(domain, qtype, "RESOLVED", match.Upstream, time.Since(start), "SERVFAIL", false)
+		s.emitEvent(domain, qtype, "RESOLVED", match.Upstream, time.Since(start), "SERVFAIL", false, processName)
 		return
 	}
 
@@ -166,25 +193,22 @@ func (s *Server) handleQuery(w dns.ResponseWriter, req *dns.Msg) {
 		m.SetReply(req)
 		m.Rcode = dns.RcodeServerFailure
 		_ = w.WriteMsg(m)
-		s.emitEvent(domain, qtype, "RESOLVED", resolver.Name(), time.Since(start), "SERVFAIL", false)
+		s.emitEvent(domain, qtype, "RESOLVED", resolver.Name(), time.Since(start), "SERVFAIL", false, processName)
 		return
 	}
 
-	slog.Debug("resolved", "domain", domain, "upstream", resolver.Name(), "answers", len(resp.Answer))
+	slog.Debug("resolved", "domain", domain, "upstream", resolver.Name(), "process", processName)
 
-	// Cache successful responses
 	if s.useCache && s.cache != nil && resp.Rcode == dns.RcodeSuccess {
 		s.cache.set(domain, q.Qtype, resp)
 	}
 
 	resp.Id = req.Id
 	_ = w.WriteMsg(resp)
-
-	rcode := dns.RcodeToString[resp.Rcode]
-	s.emitEvent(domain, qtype, "RESOLVED", resolver.Name(), time.Since(start), rcode, false)
+	s.emitEvent(domain, qtype, "RESOLVED", resolver.Name(), time.Since(start), dns.RcodeToString[resp.Rcode], false, processName)
 }
 
-func (s *Server) emitEvent(domain, qtype, action, upstreamName string, latency time.Duration, rcode string, cached bool) {
+func (s *Server) emitEvent(domain, qtype, action, upstreamName string, latency time.Duration, rcode string, cached bool, processName string) {
 	if s.stream == nil {
 		return
 	}
@@ -197,6 +221,7 @@ func (s *Server) emitEvent(domain, qtype, action, upstreamName string, latency t
 		Latency:  latency,
 		Rcode:    rcode,
 		Cached:   cached,
+		Process:  processName,
 	})
 }
 
@@ -205,11 +230,10 @@ func (s *Server) buildBlockResponse(req *dns.Msg, blockIP net.IP) *dns.Msg {
 	m.SetReply(req)
 
 	if blockIP == nil {
-		m.Rcode = dns.RcodeNameError // NXDOMAIN
+		m.Rcode = dns.RcodeNameError
 		return m
 	}
 
-	// Return zero IP for A/AAAA queries
 	q := req.Question[0]
 	switch q.Qtype {
 	case dns.TypeA:

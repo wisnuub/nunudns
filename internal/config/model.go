@@ -220,6 +220,60 @@ func (m *Model) GetPools() []PoolConfig {
 	return result
 }
 
+// GetProcessRules returns a copy of all process rules.
+func (m *Model) GetProcessRules() []ProcessRule {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]ProcessRule, len(m.cfg.Rules.ProcessRules))
+	copy(result, m.cfg.Rules.ProcessRules)
+	return result
+}
+
+// AddProcessRule appends a process rule and saves.
+func (m *Model) AddProcessRule(pr ProcessRule) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cfg := m.cfg
+	cfg.Rules.ProcessRules = append(cfg.Rules.ProcessRules, pr)
+	if err := m.writeLocked(cfg); err != nil {
+		return err
+	}
+	m.cfg = cfg
+	return nil
+}
+
+// UpdateProcessRule replaces the process rule at index i and saves.
+func (m *Model) UpdateProcessRule(i int, pr ProcessRule) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cfg := m.cfg
+	if i < 0 || i >= len(cfg.Rules.ProcessRules) {
+		return fmt.Errorf("process rule index %d out of range", i)
+	}
+	cfg.Rules.ProcessRules[i] = pr
+	if err := m.writeLocked(cfg); err != nil {
+		return err
+	}
+	m.cfg = cfg
+	return nil
+}
+
+// RemoveProcessRule removes the process rule at index i and saves.
+func (m *Model) RemoveProcessRule(i int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cfg := m.cfg
+	if i < 0 || i >= len(cfg.Rules.ProcessRules) {
+		return fmt.Errorf("process rule index %d out of range", i)
+	}
+	cfg.Rules.ProcessRules = append(cfg.Rules.ProcessRules[:i], cfg.Rules.ProcessRules[i+1:]...)
+	if err := m.writeLocked(cfg); err != nil {
+		return err
+	}
+	m.cfg = cfg
+	return nil
+}
+
 // writeLocked serialises cfg to m.path atomically.
 // Must be called with m.mu held.
 func (m *Model) writeLocked(cfg Config) error {

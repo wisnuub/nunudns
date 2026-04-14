@@ -13,6 +13,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/wisnuub/nunudns/internal/config"
 	"github.com/wisnuub/nunudns/internal/logstream"
+	"github.com/wisnuub/nunudns/internal/netsetup"
 	"github.com/wisnuub/nunudns/internal/server"
 	"github.com/wisnuub/nunudns/internal/service"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -440,6 +441,103 @@ func (a *App) SaveSettings(s config.ServerConfig) error {
 	cfg := a.model.Get()
 	cfg.Server = s
 	return a.model.Set(cfg)
+}
+
+// ── Process Rules ─────────────────────────────────────────────────────────────
+
+// GetProcessRules returns all per-process DNS routing rules.
+func (a *App) GetProcessRules() []config.ProcessRule {
+	rules := a.model.GetProcessRules()
+	if rules == nil {
+		return []config.ProcessRule{}
+	}
+	return rules
+}
+
+// AddProcessRule appends a new per-process rule.
+func (a *App) AddProcessRule(pr config.ProcessRule) error {
+	return a.model.AddProcessRule(pr)
+}
+
+// UpdateProcessRule replaces the process rule at index i.
+func (a *App) UpdateProcessRule(i int, pr config.ProcessRule) error {
+	return a.model.UpdateProcessRule(i, pr)
+}
+
+// DeleteProcessRule removes the process rule at index i.
+func (a *App) DeleteProcessRule(i int) error {
+	return a.model.RemoveProcessRule(i)
+}
+
+// ── Network / System DNS Setup ─────────────────────────────────────────────
+
+// GetAdapters returns all active network adapters and their current DNS settings.
+func (a *App) GetAdapters() []netsetup.AdapterInfo {
+	adapters, err := netsetup.GetActiveAdapters()
+	if err != nil {
+		return nil
+	}
+	return adapters
+}
+
+// EnableSystemDNS sets all active adapters to use 127.0.0.1 (this app) as DNS.
+// dnsIP should be the listen IP (e.g. "127.0.0.1").
+func (a *App) EnableSystemDNS() error {
+	if !netsetup.IsAdmin() {
+		return fmt.Errorf("administrator privileges are required to change DNS settings")
+	}
+	adapters, err := netsetup.GetActiveAdapters()
+	if err != nil {
+		return fmt.Errorf("listing adapters: %w", err)
+	}
+
+	cfg := a.model.Get()
+	// Extract just the IP part of the listen address
+	listenIP := cfg.Server.Listen
+	if h, _, err2 := splitHostPort(listenIP); err2 == nil {
+		listenIP = h
+	}
+
+	for _, ad := range adapters {
+		if err := netsetup.SetAdapterDNS(ad.Name, []string{listenIP}); err != nil {
+			return fmt.Errorf("setting DNS on %q: %w", ad.Name, err)
+		}
+	}
+	_ = netsetup.FlushDNSCache()
+	return nil
+}
+
+// DisableSystemDNS resets all active adapters back to DHCP/automatic DNS.
+func (a *App) DisableSystemDNS() error {
+	if !netsetup.IsAdmin() {
+		return fmt.Errorf("administrator privileges are required to change DNS settings")
+	}
+	adapters, err := netsetup.GetActiveAdapters()
+	if err != nil {
+		return fmt.Errorf("listing adapters: %w", err)
+	}
+	for _, ad := range adapters {
+		if err := netsetup.ResetAdapterDNS(ad.Name); err != nil {
+			return fmt.Errorf("resetting DNS on %q: %w", ad.Name, err)
+		}
+	}
+	_ = netsetup.FlushDNSCache()
+	return nil
+}
+
+// IsAdmin returns true if NunuDNS is running with administrator privileges.
+func (a *App) IsAdmin() bool {
+	return netsetup.IsAdmin()
+}
+
+// splitHostPort splits "host:port" and returns host, port.
+func splitHostPort(addr string) (string, string, error) {
+	for i := len(addr) - 1; i >= 0; i-- {
+		if addr[i] == ':' {
+			return addr[:i], addr[i+1:], nil
+		}
+	}
+	return addr, "", fmt.Errorf("no port in address")
 }
 
 // executablePath returns the absolute path to the running executable.

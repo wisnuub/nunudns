@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -14,8 +15,9 @@ import (
 type Action int
 
 const (
-	ActionRoute  Action = iota // forward to a specific upstream
-	ActionBlock                // block the query
+	ActionRoute   Action = iota // forward to a specific upstream
+	ActionBlock                 // block the query
+	ActionNoMatch               // no rule matched (only returned by LookupProcess)
 )
 
 // Match is the result of evaluating routing rules for a domain.
@@ -26,15 +28,23 @@ type Match struct {
 }
 
 type rule struct {
-	kind     string // "exact", "suffix", "regex"
+	kind     string // "exact", "suffix", "regex", "any"
 	pattern  string
 	re       *regexp.Regexp
 	upstream string
 }
 
+type processRule struct {
+	process  string // lowercase exe name, "*" = any, or glob pattern
+	domain   rule   // compiled domain rule (kind="any" means all domains)
+	upstream string
+	enabled  bool
+}
+
 // Router holds compiled routing rules and a blocklist.
 type Router struct {
 	routes          []rule
+	processRules    []processRule
 	blocked         map[string]net.IP // domain → block IP (nil = NXDOMAIN)
 	defaultUpstream string
 }
@@ -52,6 +62,28 @@ func New(cfg config.RulesConfig) (*Router, error) {
 			return nil, err
 		}
 		r.routes = append(r.routes, compiled)
+	}
+
+	for _, pr := range cfg.ProcessRules {
+		if !pr.Enabled {
+			continue
+		}
+		var domainRule rule
+		var err error
+		if pr.Match == "" || pr.Match == "*" {
+			domainRule = rule{kind: "any", upstream: pr.Upstream}
+		} else {
+			domainRule, err = compileRule(pr.Match, pr.Upstream)
+			if err != nil {
+				return nil, err
+			}
+		}
+		r.processRules = append(r.processRules, processRule{
+			process:  strings.ToLower(pr.Process),
+			domain:   domainRule,
+			upstream: pr.Upstream,
+			enabled:  true,
+		})
 	}
 
 	for _, bl := range cfg.Blocklists {
@@ -85,6 +117,46 @@ func compileRule(pattern, upstream string) (rule, error) {
 	}
 }
 
+// LookupProcess checks process-specific rules first. Returns ActionNoMatch if no
+// process rule matched, so the caller can fall back to Lookup.
+func (r *Router) LookupProcess(domain, processName string) Match {
+	if processName == "" || len(r.processRules) == 0 {
+		return Match{Action: ActionNoMatch}
+	}
+
+	domain = strings.ToLower(strings.TrimSuffix(domain, "."))
+	processLower := strings.ToLower(processName)
+
+	for _, pr := range r.processRules {
+		if !pr.enabled {
+			continue
+		}
+		if !matchProcess(pr.process, processLower) {
+			continue
+		}
+		if pr.domain.kind == "any" || matchRule(pr.domain, domain) {
+			if pr.upstream == "__block__" {
+				return Match{Action: ActionBlock}
+			}
+			return Match{Action: ActionRoute, Upstream: pr.upstream}
+		}
+	}
+	return Match{Action: ActionNoMatch}
+}
+
+// matchProcess checks if a process name matches a process pattern.
+// Patterns: "*" = any, "chrome.exe" = exact (case-insensitive), "game*.exe" = glob.
+func matchProcess(pattern, name string) bool {
+	if pattern == "*" {
+		return true
+	}
+	matched, err := filepath.Match(pattern, name)
+	if err != nil {
+		return pattern == name
+	}
+	return matched
+}
+
 // Lookup finds the routing action for a domain name (FQDN with trailing dot OK).
 func (r *Router) Lookup(domain string) Match {
 	domain = strings.ToLower(strings.TrimSuffix(domain, "."))
@@ -107,6 +179,8 @@ func (r *Router) Lookup(domain string) Match {
 
 func matchRule(r rule, domain string) bool {
 	switch r.kind {
+	case "any":
+		return true
 	case "exact":
 		return domain == r.pattern
 	case "suffix":

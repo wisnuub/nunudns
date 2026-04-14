@@ -16,6 +16,7 @@ type Event struct {
 	Latency  time.Duration
 	Rcode    string
 	Cached   bool
+	Process  string // executable name that made the query, e.g. "chrome.exe" (Windows only)
 }
 
 const chanBufSize = 256
