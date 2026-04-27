@@ -8,6 +8,8 @@ const ServiceName = "NunuDNS"
 
 func IsWindowsService() bool { return false }
 
+func QueryStatus() string { return "unsupported" }
+
 func RunAsService(runFn func() error, _ func()) error {
 	return fmt.Errorf("Windows service mode is only supported on Windows")
 }

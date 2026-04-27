@@ -44,7 +44,7 @@ func NewWithStream(cfg *config.Config, stream *logstream.Stream) (*Server, error
 		return nil, fmt.Errorf("building router: %w", err)
 	}
 
-	resolvers := make(map[string]upstream.Resolver, len(cfg.Upstreams))
+	resolvers := make(map[string]upstream.Resolver, len(cfg.Upstreams)+len(cfg.Rules.Pools))
 	for _, u := range cfg.Upstreams {
 		r, err := upstream.New(u)
 		if err != nil {
@@ -52,6 +52,20 @@ func NewWithStream(cfg *config.Config, stream *logstream.Stream) (*Server, error
 		}
 		resolvers[u.Name] = r
 		slog.Info("upstream registered", "name", u.Name, "protocol", u.Protocol, "address", u.Address)
+	}
+
+	// Build pool resolvers from their member upstreams.
+	for _, p := range cfg.Rules.Pools {
+		members := make([]upstream.Resolver, 0, len(p.Members))
+		for _, memberName := range p.Members {
+			r, ok := resolvers[memberName]
+			if !ok {
+				return nil, fmt.Errorf("pool %q references unknown upstream %q", p.Name, memberName)
+			}
+			members = append(members, r)
+		}
+		resolvers[p.Name] = upstream.NewPool(p.Name, members)
+		slog.Info("pool registered", "name", p.Name, "members", len(members))
 	}
 
 	srv := &Server{

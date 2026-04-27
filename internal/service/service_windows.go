@@ -123,6 +123,33 @@ func Start() error {
 	return s.Start()
 }
 
+// QueryStatus returns the current Windows service state: "running", "stopped", or "not_installed".
+func QueryStatus() string {
+	m, err := mgr.Connect()
+	if err != nil {
+		return "not_installed"
+	}
+	defer m.Disconnect()
+
+	s, err := m.OpenService(ServiceName)
+	if err != nil {
+		return "not_installed"
+	}
+	defer s.Close()
+
+	status, err := s.Query()
+	if err != nil {
+		return "not_installed"
+	}
+
+	switch status.State {
+	case svc.Running:
+		return "running"
+	default:
+		return "stopped"
+	}
+}
+
 // Stop stops the NunuDNS Windows service.
 func Stop() error {
 	m, err := mgr.Connect()

@@ -21,57 +21,65 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+          cache: true
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.8.0
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
-
-      - name: Build
-        run: wails build -platform windows/amd64 -ldflags "-s -w"
+        run: npm ci
 
       - name: Get tag name
         id: tag
         shell: bash
         run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
+      - name: Build
+        run: wails build -platform windows/amd64 -ldflags "-s -w -X main.version=${{ steps.tag.outputs.tag }}"
+
+      - name: Test
+        run: go test ./...
+
       - name: Package release
+        id: package
         shell: pwsh
         run: |
           $tag = "${{ steps.tag.outputs.tag }}"
           $zipName = "NunuDNS-$tag-windows-amd64.zip"
           Compress-Archive -Path "build/bin/NunuDNS.exe", "config.example.toml" -DestinationPath $zipName
-          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "NunuDNS ${{ steps.tag.outputs.tag }}"
-          prerelease: ${{ contains(steps.tag.outputs.tag, 'alpha') || contains(steps.tag.outputs.tag, 'beta') || contains(steps.tag.outputs.tag, '0.0') }}
+          prerelease: ${{ contains(steps.tag.outputs.tag, 'alpha') || contains(steps.tag.outputs.tag, 'beta') || contains(steps.tag.outputs.tag, 'rc') }}
           body: |
             ## NunuDNS ${{ steps.tag.outputs.tag }}
 
             Per-application and system-wide DNS proxy for Windows.
 
             ### What's included
-            - `NunuDNS.exe` — the main application (requires Windows 10/11)
+            - `NunuDNS.exe` — the main application (Windows 10/11, 64-bit)
             - `config.example.toml` — example configuration
 
             ### Requirements
             - Windows 10 / 11 (64-bit)
-            - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (usually pre-installed on Windows 11)
-            - Administrator privileges for System DNS and Windows Service features
+            - [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) — pre-installed on Windows 11
+            - Administrator privileges are required (the app will prompt via UAC on launch)
 
-            ### First run
+            ### Getting started
             1. Extract the zip
-            2. Run `NunuDNS.exe`
-            3. Add DNS upstreams in **DNS Servers**
-            4. Start the DNS server from the **Activity Log** view
-          files: ${{ env.ZIP_NAME }}
+            2. Run `NunuDNS.exe` — accept the UAC prompt
+            3. Add DNS servers in **DNS Servers**, configure routing in **Rules**
+            4. Press **Start DNS** in the Activity Log view
+            5. Optionally enable **System DNS** in Settings to route all system traffic through NunuDNS
+          files: ${{ steps.package.outputs.zip_name }}

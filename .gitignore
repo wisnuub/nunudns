@@ -7,6 +7,12 @@ config.toml
 blocklist.txt
 *.log
 
+# Wails build output
+build/bin/
+
+# Generated Windows resource files (produced by go-winres / wails build)
+*.syso
+
 # Frontend build artifacts
 frontend/node_modules/
 frontend/dist/

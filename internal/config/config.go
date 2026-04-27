@@ -108,13 +108,32 @@ func validate(cfg *Config) error {
 		upstreamNames[u.Name] = true
 	}
 
-	if cfg.Rules.DefaultUpstream != "" && !upstreamNames[cfg.Rules.DefaultUpstream] {
-		return fmt.Errorf("default_upstream %q not defined in upstreams", cfg.Rules.DefaultUpstream)
+	// Pools are also valid upstream targets in rules.
+	poolNames := make(map[string]bool)
+	for _, p := range cfg.Rules.Pools {
+		if p.Name == "" {
+			return fmt.Errorf("a pool is missing a name")
+		}
+		poolNames[p.Name] = true
+	}
+
+	validTarget := func(name string) bool {
+		return name == "__block__" || upstreamNames[name] || poolNames[name]
+	}
+
+	if cfg.Rules.DefaultUpstream != "" && !validTarget(cfg.Rules.DefaultUpstream) {
+		return fmt.Errorf("default_upstream %q not defined in upstreams or pools", cfg.Rules.DefaultUpstream)
 	}
 
 	for _, r := range cfg.Rules.Routes {
-		if !upstreamNames[r.Upstream] {
-			return fmt.Errorf("route match=%q references unknown upstream %q", r.Match, r.Upstream)
+		if !validTarget(r.Upstream) {
+			return fmt.Errorf("route match=%q references unknown upstream or pool %q", r.Match, r.Upstream)
+		}
+	}
+
+	for _, pr := range cfg.Rules.ProcessRules {
+		if !validTarget(pr.Upstream) {
+			return fmt.Errorf("process rule process=%q references unknown upstream or pool %q", pr.Process, pr.Upstream)
 		}
 	}
 

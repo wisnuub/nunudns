@@ -39,42 +39,100 @@ address  = "dns.quad9.net:853"
 timeout  = 8
 
 [[upstreams]]
+name     = "adguard-doh"
+protocol = "doh"
+address  = "https://dns.adguard.com/dns-query"
+timeout  = 8
+
+[[upstreams]]
 name     = "local-router"
 protocol = "udp"
 address  = "192.168.1.1:53"
 timeout  = 3
 
 
+# ── Pools ─────────────────────────────────────────────────────────────────────
+# A pool groups multiple upstreams together. Queries are distributed round-robin
+# and automatically fall over to the next member on failure.
+# Use a pool name anywhere you would use an upstream name in rules.
+
+[[rules.pools]]
+name    = "secure"
+members = ["cloudflare-doh", "quad9-dot"]
+
+[[rules.pools]]
+name    = "fast"
+members = ["cloudflare", "google"]
+
+
 # ── Routing rules ─────────────────────────────────────────────────────────────
 [rules]
-# Upstream used when no route rule matches.
-default_upstream = "cloudflare-doh"
+# Upstream (or pool) used when no route rule matches.
+default_upstream = "secure"
 
 # Routes are evaluated in order — first match wins.
+# Pattern types:
+#   example.com        — exact domain match
+#   *.example.com      — wildcard suffix (any subdomain)
+#   /regex/            — full regular expression
 
-# Send .local domains to the local router
+# Local network — use the router's DNS
 [[rules.routes]]
 match    = "*.local"
 upstream = "local-router"
 
-# Send corporate intranet to internal DNS
+# Corporate intranet
 [[rules.routes]]
 match    = "*.corp.example.com"
 upstream = "local-router"
 
-# Force a specific domain to use Quad9 DoT
+# Use the fast (unencrypted) pool for gaming CDNs where latency matters
 [[rules.routes]]
-match    = "malware-check.example.com"
-upstream = "quad9-dot"
+match    = "*.riotgames.com"
+upstream = "fast"
 
-# Regex example — route all .ru and .cn domains to Quad9
+[[rules.routes]]
+match    = "*.steampowered.com"
+upstream = "fast"
+
+# Block a specific domain
+# [[rules.routes]]
+# match    = "ads.example.com"
+# upstream = "__block__"
+
+# Regex example — route all .ru and .cn domains to Quad9 (comment delimiters need escaping in TOML)
 # [[rules.routes]]
 # match    = "/\\.(ru|cn)\\.?$/"
 # upstream = "quad9-dot"
 
 
+# ── Per-application rules ─────────────────────────────────────────────────────
+# Route DNS queries from a specific process to a different upstream.
+# Process patterns: "chrome.exe" (exact), "game*.exe" (glob), "*" (any process).
+# match is optional — leave empty to match all domains from that process.
+
+# [[rules.process_rules]]
+# process  = "chrome.exe"
+# match    = ""                # all domains
+# upstream = "adguard-doh"    # Chrome queries go through AdGuard
+# enabled  = true
+
+# [[rules.process_rules]]
+# process  = "LeagueClient.exe"
+# match    = ""
+# upstream = "fast"           # League uses the fast pool for low latency
+# enabled  = true
+
+# [[rules.process_rules]]
+# process  = "someadware.exe"
+# match    = ""
+# upstream = "__block__"      # block all DNS from this process
+# enabled  = true
+
+
 # ── Blocklists ────────────────────────────────────────────────────────────────
 # Supports plain-domain lists and hosts-file format (0.0.0.0 domain).
+# Missing files are skipped with a warning rather than stopping the server.
 
 # [[rules.blocklists]]
 # path   = "blocklist.txt"

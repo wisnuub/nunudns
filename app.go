@@ -395,16 +395,9 @@ func (a *App) ImportServers(servers []BuiltinServer) error {
 	return nil
 }
 
-// GetServiceStatus returns the Windows service status or "unsupported" on other platforms.
+// GetServiceStatus returns the Windows service status: "running", "stopped", "not_installed", or "unsupported".
 func (a *App) GetServiceStatus() string {
-	// On non-Windows, service.Install will return an error.
-	// We detect platform support by calling a no-op check.
-	if !serviceSupported() {
-		return "unsupported"
-	}
-	// On Windows we'd check the SCM. For now return "not_installed" as a safe default.
-	// The windows service package doesn't expose a query status function yet.
-	return "not_installed"
+	return service.QueryStatus()
 }
 
 // InstallService installs the Windows service.
@@ -540,13 +533,4 @@ func splitHostPort(addr string) (string, string, error) {
 	return addr, "", fmt.Errorf("no port in address")
 }
 
-// executablePath returns the absolute path to the running executable.
-func executablePath() (string, error) {
-	return "", fmt.Errorf("service install: not implemented on this platform")
-}
-
-// serviceSupported returns true on Windows only.
-func serviceSupported() bool {
-	return false // overridden on Windows via build tags if needed
-}
 

@@ -169,6 +169,9 @@ func (r *Router) Lookup(domain string) Match {
 	// Check routes in order (first match wins)
 	for _, rule := range r.routes {
 		if matchRule(rule, domain) {
+			if rule.upstream == "__block__" {
+				return Match{Action: ActionBlock}
+			}
 			return Match{Action: ActionRoute, Upstream: rule.upstream}
 		}
 	}
@@ -194,6 +197,11 @@ func matchRule(r rule, domain string) bool {
 func (r *Router) loadBlocklist(path, action string) error {
 	f, err := os.Open(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// Missing blocklist files are non-fatal — log and continue.
+			// The file may be created later or removed intentionally.
+			return nil
+		}
 		return err
 	}
 	defer f.Close()
